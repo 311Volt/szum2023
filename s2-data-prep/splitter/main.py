@@ -20,7 +20,7 @@ sampledata = dict()
 
 
 def save_sampleids_info():
-    with open("original_filenames.csv", "w") as outfile:
+    with open("original_filenames.csv", "w", newline='') as outfile:
         writer = csv.DictWriter(outfile, fieldnames=["sampleid", "originalFilename"])
         writer.writeheader()
         for sampleid in all_sampleids:
@@ -109,6 +109,7 @@ def entry():
     save_split(split1[1], "split1_test.csv")
     save_split(split2[0], "split2_train.csv")
     save_split(split2[1], "split2_test.csv")
+    save_sampleids_info()
 
 if __name__ == '__main__':
     entry()
