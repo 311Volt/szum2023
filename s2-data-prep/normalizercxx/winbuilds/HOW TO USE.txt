@@ -1,0 +1,6 @@
+input/output paths are hardcoded.
+
+input files are expected to be in ./all, e.g. ./all/000001.mp3, ./all/000002.mp3 etc.
+output files will be written to ./wav - THIS DIRECTORY MUST BE CREATED MANUALLY
+
+the split2 version will normalize and trim, while the split1 version will not.
