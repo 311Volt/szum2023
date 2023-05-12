@@ -46,17 +46,22 @@ def save_split(sampleids, output_filename):
 
 
 def create_split1():
-    test_sampleids = random.sample(all_sampleids, int(len(all_sampleids) * 0.1))
-    train_sampleids = list(set(all_sampleids) - set(test_sampleids))
-    return train_sampleids, test_sampleids
+    testval_sampleids = set(random.sample(all_sampleids, int(len(all_sampleids) * 0.1)))
+    test_sampleids = set(random.sample(list(testval_sampleids), k=int(len(testval_sampleids) / 2)))
+    val_sampleids = testval_sampleids - test_sampleids
+    train_sampleids = list(set(all_sampleids) - set(testval_sampleids))
+    return train_sampleids, test_sampleids, val_sampleids
 
 
-def create_split2(train_size, test_size):
-    test_sampleids = set(random.sample(all_sampleids, int(len(all_sampleids) * 0.1)))
-    train_sampleids = set(all_sampleids) - set(test_sampleids)
+def create_split2(train_size, test_size, val_size):
+    testval_sampleids = set(random.sample(all_sampleids, int(len(all_sampleids) * 0.1)))
+    train_sampleids = set(all_sampleids) - set(testval_sampleids)
+    test_sampleids = set(random.sample(list(testval_sampleids), k=int(len(testval_sampleids) / 2)))
+    val_sampleids = testval_sampleids - test_sampleids
 
     test_result = []
     train_result = []
+    val_result = []
 
     comb_sampleids_test = {
         comb_name: [x for x in idlist if x in test_sampleids]
@@ -64,6 +69,10 @@ def create_split2(train_size, test_size):
     }
     comb_sampleids_train = {
         comb_name: [x for x in idlist if x in train_sampleids]
+        for (comb_name, idlist) in comb_sampleids.items()
+    }
+    comb_sampleids_val = {
+        comb_name: [x for x in idlist if x in val_sampleids]
         for (comb_name, idlist) in comb_sampleids.items()
     }
 
@@ -77,7 +86,12 @@ def create_split2(train_size, test_size):
         sampleid = random.choice(comb_sampleids_test[combination])
         test_result.append(sampleid)
 
-    return train_result, test_result
+    for i in range(val_size):
+        combination = random.choice(viable_combinations)
+        sampleid = random.choice(comb_sampleids_val[combination])
+        val_result.append(sampleid)
+
+    return train_result, test_result, val_result
 
 
 def entry():
@@ -99,16 +113,24 @@ def entry():
                     comb_sampleids[comb].append(sampleid)
 
     print("creating split1...")
-    split1 = create_split1()
+    s1train, s1test, s1val = create_split1()
 
     print("creating split2...")
-    split2 = create_split2(100000, 10000)
+    s2train, s2test, s2val = create_split2(100000, 10000, 10000)
+
+    print("creating split3...")
+    s3train, s3test, s3val = (s2train + s2val), s2test, s2val
 
     print("saving the results...")
-    save_split(split1[0], "split1_train.csv")
-    save_split(split1[1], "split1_test.csv")
-    save_split(split2[0], "split2_train.csv")
-    save_split(split2[1], "split2_test.csv")
+    save_split(s1train, "split1_train.csv")
+    save_split(s1test, "split1_test.csv")
+    save_split(s1val, "split1_val.csv")
+    save_split(s2train, "split2_train.csv")
+    save_split(s2test, "split2_test.csv")
+    save_split(s2val, "split2_val.csv")
+    save_split(s3train, "split3_train.csv")
+    save_split(s3test, "split3_test.csv")
+    save_split(s3val, "split3_val.csv")
     save_sampleids_info()
 
 if __name__ == '__main__':
