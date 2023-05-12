@@ -1,3 +1,0 @@
-
-CompileFlags:
-  Add: '--target=i686-w64-mingw32'
