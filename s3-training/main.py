@@ -53,12 +53,16 @@ def binarize_labels(labels):
 
     return int_labels
 
+def sampleid_filename(split_number, sampleid):
+    if split_number == 1:
+        return "./mel_unnormalized/{}.png".format(sampleid)
+    return "./mel/{}.png".format(sampleid)
 
 def prepare_dataset(split_number, type_name):
     csv_path = "./split{}_{}.csv".format(split_number, type_name)
 
     df_train = pd.read_csv(csv_path, dtype={"sampleid": "string"})
-    image_paths = ['./mel_unnormalized/' + fname + '.png' for fname in df_train['sampleid']]
+    image_paths = [sampleid_filename(split_number, fname) for fname in df_train['sampleid']]
     class_labels = df_train['gender'].tolist()
     int_labels = binarize_labels(class_labels)
 
@@ -74,7 +78,7 @@ def load_and_preprocess_image(path, label):
     img = tf.io.read_file(path)
     img = tf.image.decode_png(img, channels=1, dtype=tf.dtypes.uint8)
     # img = tf.image.convert_image_dtype(img, dtype=tf.float32)  # normalize pixel values
-    img = tf.cast(img, tf.float16) / 255.
+    img = tf.cast(img, tf.float16) * (1.0 / 255.0)
     img = tf.squeeze(img)
     img = tf.transpose(img)
     paddings = tf.constant([[0, 100, ], [0, 0]])
@@ -89,12 +93,20 @@ def entry():
     # show_spectrogram(create_spectrogram_from_audio_file("002945.wav"), "fromaudio")
     # show_spectrogram(read_spectrogram("000022.png"), "frompng")
 
-    ds_train = prepare_dataset(1, 'train') \
+    split_number = 3
+
+    ds_train = prepare_dataset(split_number, 'train') \
         .map(load_and_preprocess_image, num_parallel_calls=tf.data.AUTOTUNE) \
         .batch(128) \
+        .cache()
+        # .prefetch(tf.data.AUTOTUNE)
+
+    ds_test = prepare_dataset(split_number, 'test') \
+        .map(load_and_preprocess_image, num_parallel_calls=tf.data.AUTOTUNE) \
+        .batch(90000) \
         .prefetch(tf.data.AUTOTUNE)
 
-    ds_val = prepare_dataset(1, 'val') \
+    ds_val = prepare_dataset(split_number, 'val') \
         .map(load_and_preprocess_image, num_parallel_calls=tf.data.AUTOTUNE) \
         .batch(4096) \
         .prefetch(tf.data.AUTOTUNE)
@@ -117,15 +129,21 @@ def entry():
         metrics=["accuracy"],
     )
 
+    savecb = keras.callbacks.ModelCheckpoint(
+        "saved-model-epoch{epoch:03d}-{val_accuracy:.2f}.hdf5",
+        monitor='val_accuracy',
+        verbose=1,
+        save_best_only=False,
+        save_weights_only=False,
+        mode='max')
+
     print(ds_train)
 
-    model.fit(ds_train, epochs=60, validation_data=ds_val)
+    history = model.fit(ds_train, epochs=80, validation_data=ds_val, callbacks=savecb)
+    model.save("")
+    print(history.history)
+    print("loss, accuracy: " + str(model.evaluate(ds_test)))
 
-    # for idx, (x, y) in enumerate(ds_train):
-    #     # model.fit(x=x, y=y, validation_data=ds_val, batch_size=128)
-    #     #if idx % 10 == 0:
-    #         #model.fit(x=x, y=y, validation_data=ds_val, batch_size=128)
-    #     model.fit(x=x, y=y, batch_size=128)
 
 
 if __name__ == "__main__":
