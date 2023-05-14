@@ -13,7 +13,6 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
 from tensorflow import keras
 
-
 def create_spectrogram(signal):
     rate = 16000
     topdb = 70
@@ -103,29 +102,30 @@ def entry():
 
     ds_test = prepare_dataset(split_number, 'test') \
         .map(load_and_preprocess_image, num_parallel_calls=tf.data.AUTOTUNE) \
-        .batch(90000) \
+        .batch(128) \
         .prefetch(tf.data.AUTOTUNE)
 
     ds_val = prepare_dataset(split_number, 'val') \
         .map(load_and_preprocess_image, num_parallel_calls=tf.data.AUTOTUNE) \
-        .batch(4096) \
+        .batch(128) \
         .prefetch(tf.data.AUTOTUNE)
 
-    lstm_layer = keras.layers.LSTM(64, input_shape=(None, 128))
+    lstm_layer = keras.layers.LSTM(256, input_shape=(None, 128))
     model = keras.models.Sequential(
         [
             lstm_layer,
             keras.layers.BatchNormalization(),
-            keras.layers.Dense(10),
-            keras.layers.Dense(1),
+            keras.layers.Dense(64, activation='relu'),
+            keras.layers.Dense(24, activation='relu'),
+            keras.layers.Dense(1, activation='sigmoid'),
         ]
     )
 
     model.summary()
-
+    keras.optimizers.Adam()
     model.compile(
         loss=tf.keras.losses.BinaryCrossentropy(),
-        optimizer="adam",
+        optimizer='adam',
         metrics=["accuracy"],
     )
 
@@ -133,13 +133,13 @@ def entry():
         "saved-model-epoch{epoch:03d}-{val_accuracy:.2f}.hdf5",
         monitor='val_accuracy',
         verbose=1,
-        save_best_only=False,
+        save_best_only=True,
         save_weights_only=False,
         mode='max')
 
     print(ds_train)
 
-    history = model.fit(ds_train, epochs=80, validation_data=ds_val, callbacks=savecb)
+    history = model.fit(ds_train, epochs=40, validation_data=ds_val, callbacks=savecb)
     model.save("")
     print(history.history)
     print("loss, accuracy: " + str(model.evaluate(ds_test)))
