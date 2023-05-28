@@ -46,18 +46,19 @@ def save_split(sampleids, output_filename):
 
 
 def create_split1():
-    testval_sampleids = set(random.sample(all_sampleids, int(len(all_sampleids) * 0.1)))
+    testval_sampleids = set(random.sample(all_sampleids, int(len(all_sampleids) * 0.2)))
     test_sampleids = set(random.sample(list(testval_sampleids), k=int(len(testval_sampleids) / 2)))
     val_sampleids = testval_sampleids - test_sampleids
     train_sampleids = list(set(all_sampleids) - set(testval_sampleids))
     return train_sampleids, test_sampleids, val_sampleids
 
 
-def create_split2(train_size, test_size, val_size):
-    testval_sampleids = set(random.sample(all_sampleids, int(len(all_sampleids) * 0.1)))
+def create_split2(train_size, test_sampleids, val_sampleids):
+    testval_sampleids = set(test_sampleids).union(set(val_sampleids))
     train_sampleids = set(all_sampleids) - set(testval_sampleids)
-    test_sampleids = set(random.sample(list(testval_sampleids), k=int(len(testval_sampleids) / 2)))
-    val_sampleids = testval_sampleids - test_sampleids
+
+    test_size = len(test_sampleids)
+    val_size = len(val_sampleids)
 
     test_result = []
     train_result = []
@@ -81,17 +82,17 @@ def create_split2(train_size, test_size, val_size):
         sampleid = random.choice(comb_sampleids_train[combination])
         train_result.append(sampleid)
 
-    for i in range(test_size):
-        combination = random.choice(viable_combinations)
-        sampleid = random.choice(comb_sampleids_test[combination])
-        test_result.append(sampleid)
+    # for i in range(test_size):
+    #     combination = random.choice(viable_combinations)
+    #     sampleid = random.choice(comb_sampleids_test[combination])
+    #     test_result.append(sampleid)
+    #
+    # for i in range(val_size):
+    #     combination = random.choice(viable_combinations)
+    #     sampleid = random.choice(comb_sampleids_val[combination])
+    #     val_result.append(sampleid)
 
-    for i in range(val_size):
-        combination = random.choice(viable_combinations)
-        sampleid = random.choice(comb_sampleids_val[combination])
-        val_result.append(sampleid)
-
-    return train_result, test_result, val_result
+    return train_result, list(test_sampleids), list(val_sampleids)
 
 
 def entry():
@@ -116,7 +117,7 @@ def entry():
     s1train, s1test, s1val = create_split1()
 
     print("creating split2...")
-    s2train, s2test, s2val = create_split2(100000, 10000, 10000)
+    s2train, s2test, s2val = create_split2(100000, s1test, s1val)
 
     print("creating split3...")
     s3train, s3test, s3val = (s2train + s2val), s2test, s2val
