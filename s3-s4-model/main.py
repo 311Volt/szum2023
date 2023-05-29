@@ -1,3 +1,6 @@
+import re
+import sys
+
 import librosa
 import librosa.feature
 import scipy.signal
@@ -24,7 +27,8 @@ def create_spectrogram(signal):
 
     specdB = librosa.power_to_db(spec, ref=np.max, top_db=topdb)
     specdB = 1.0 + (specdB / topdb)
-    return np.clip(specdB, 0, 1).astype(np.float16)
+    spec1 = np.transpose(np.clip(specdB, 0, 1).astype(np.float16))
+    return spec1.reshape((1, spec1.shape[0], spec1.shape[1]))
 
 
 def create_spectrogram_from_audio_file(filename):
@@ -59,29 +63,46 @@ def sampleid_filename(split_number, sampleid):
     return "./mel/{}.png".format(sampleid)
 
 
-def prepare_dataset(split_number, type_name):
+def augmentation_amount(sampleid, enable=True):
+    if not enable:
+        return 0.0
+    hv = hash(sampleid)
+    db = (hv % 35) - 10  # -24 to +10 dB
+    # 1 dB = 1/70
+    diff = db / 70.0
+    return diff
+
+
+def prepare_dataset(split_number, type_name, enable_augmentation):
     csv_path = "./split{}_{}.csv".format(split_number, type_name)
 
     df_train = pd.read_csv(csv_path, dtype={"sampleid": "string"})
     image_paths = [sampleid_filename(split_number, fname) for fname in df_train['sampleid']]
+    aug_amounts = [augmentation_amount(int(sampleid), enable_augmentation) for sampleid in df_train['sampleid']]
     class_labels = df_train['gender'].tolist()
     int_labels = binarize_labels(class_labels)
 
     assert (len(int_labels) == len(class_labels))
 
     image_ds = tf.data.Dataset.from_tensor_slices(image_paths)
+    augamt_ds = tf.data.Dataset.from_tensor_slices(aug_amounts)
     label_ds = tf.data.Dataset.from_tensor_slices(int_labels)
 
-    return tf.data.Dataset.zip((image_ds, label_ds))
+    return tf.data.Dataset.zip((image_ds, augamt_ds, label_ds))
 
 
-def load_and_preprocess_image(path, label):
+def load_and_preprocess_image(path, augamt, label):
     img = tf.io.read_file(path)
     img = tf.image.decode_png(img, channels=1, dtype=tf.dtypes.uint8)
     # img = tf.image.convert_image_dtype(img, dtype=tf.float32)  # normalize pixel values
-    img = tf.cast(img, tf.float16) * (1.0 / 255.0)
+    img = tf.cast(img, tf.float32) * (1.0 / 255.0)
+
+    img = tf.clip_by_value(img - augamt, 0.0, 1.0)
+    img = tf.cast(img, tf.float16)
+
     img = tf.squeeze(img)
     img = tf.transpose(img)
+
     paddings = tf.constant([[0, 100, ], [0, 0]])
     # 'constant_values' is 0.
     # rank of 't' is 2.
@@ -93,21 +114,32 @@ def load_and_preprocess_image(path, label):
 def entry():
     # show_spectrogram(create_spectrogram_from_audio_file("002945.wav"), "fromaudio")
     # show_spectrogram(read_spectrogram("000022.png"), "frompng")
+    if len(sys.argv) > 1:
+        imported_model = keras.models.load_model("gcmodel.hdf5")
+        in_filename = sys.argv[1]
+        inputsnd = create_spectrogram_from_audio_file(in_filename)
+        result = imported_model.predict(inputsnd)[0][0]
+        print("result={:.06f}\n{} is {}".format(
+            result,
+            in_filename,
+            "MALE" if result < 0.5 else "FEMALE"
+        ))
+        return None
 
-    split_number = 3
+    split_number = 2
 
-    ds_train = prepare_dataset(split_number, 'train') \
+    ds_train = prepare_dataset(split_number, 'train', True) \
         .map(load_and_preprocess_image, num_parallel_calls=tf.data.AUTOTUNE) \
         .batch(128) \
         .cache()
     # .prefetch(tf.data.AUTOTUNE)
 
-    ds_test = prepare_dataset(split_number, 'test') \
+    ds_test = prepare_dataset(split_number, 'test', False) \
         .map(load_and_preprocess_image, num_parallel_calls=tf.data.AUTOTUNE) \
         .batch(128) \
         .prefetch(tf.data.AUTOTUNE)
 
-    ds_val = prepare_dataset(split_number, 'val') \
+    ds_val = prepare_dataset(split_number, 'val', False) \
         .map(load_and_preprocess_image, num_parallel_calls=tf.data.AUTOTUNE) \
         .batch(128) \
         .prefetch(tf.data.AUTOTUNE)
