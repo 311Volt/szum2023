@@ -9,11 +9,13 @@ import pandas as pd
 import os
 import audiofile
 import numpy as np
+import sklearn
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 import tensorflow as tf
 from tensorflow import keras
+import keras_tuner
 
 
 def create_spectrogram(signal):
@@ -111,11 +113,56 @@ def load_and_preprocess_image(path, augamt, label):
     return img, label
 
 
+def build_tuned_model(hp: keras_tuner.HyperParameters):
+    model = keras.Sequential()
+    model.add(
+        keras.layers.LSTM(
+            hp.Int("lstm_units", min_value=160, max_value=320, step=32),
+            input_shape=(None, 128)
+        )
+    )
+    dense_activ = hp.Choice("dense_activation", ['relu', 'sigmoid'])
+    model.add(keras.layers.BatchNormalization())
+    model.add(keras.layers.Dense(
+        hp.Int("h1size", min_value=24, max_value=96),
+        activation=dense_activ
+    ))
+    model.add(keras.layers.Dense(
+        hp.Int("h2size", min_value=8, max_value=24),
+        activation=dense_activ
+    ))
+    model.add(keras.layers.Dense(1, activation='sigmoid'))
+
+    optimizer = keras.optimizers.Adam(learning_rate=hp.Float("lrate", min_value=0.0001, max_value=0.01, sampling='log'))
+
+    model.compile(
+        loss=tf.keras.losses.BinaryCrossentropy(),
+        optimizer=optimizer,
+        metrics=[
+            "accuracy"
+        ],
+    )
+    return model
+
+
 def entry():
     # show_spectrogram(create_spectrogram_from_audio_file("002945.wav"), "fromaudio")
     # show_spectrogram(read_spectrogram("000022.png"), "frompng")
+
+    # ds_test = prepare_dataset(1, 'test', False) \
+    #     .map(load_and_preprocess_image, num_parallel_calls=tf.data.AUTOTUNE) \
+    #     .batch(128) \
+    #     .prefetch(tf.data.AUTOTUNE)
+    #
+    # imported_model = keras.models.load_model("tuned_model.hdf5")
+    # imported_model.summary()
+    #
+    # imported_model.evaluate(ds_test)
+    # return None
+
     if len(sys.argv) > 1:
         imported_model = keras.models.load_model("gcmodel.hdf5")
+
         in_filename = sys.argv[1]
         inputsnd = create_spectrogram_from_audio_file(in_filename)
         result = imported_model.predict(inputsnd)[0][0]
@@ -144,13 +191,13 @@ def entry():
         .batch(128) \
         .prefetch(tf.data.AUTOTUNE)
 
-    lstm_layer = keras.layers.LSTM(256, input_shape=(None, 128))
+    lstm_layer = keras.layers.LSTM(512, input_shape=(None, 128))
     model = keras.models.Sequential(
         [
             lstm_layer,
             keras.layers.BatchNormalization(),
+            keras.layers.Dense(256, activation='relu'),
             keras.layers.Dense(64, activation='relu'),
-            keras.layers.Dense(24, activation='relu'),
             keras.layers.Dense(1, activation='sigmoid'),
         ]
     )
@@ -158,9 +205,29 @@ def entry():
     model.summary()
     model.compile(
         loss=tf.keras.losses.BinaryCrossentropy(),
-        optimizer='adam',
-        metrics=["accuracy"],
+        optimizer=keras.optimizers.Adam(learning_rate=0.0013),
+        metrics=[
+            "accuracy"
+        ],
     )
+
+    # tuner = keras_tuner.BayesianOptimization(
+    #     hypermodel=build_tuned_model,
+    #     objective="val_accuracy",
+    #     max_trials=20
+    # )
+    #
+    # tuner.search_space_summary()
+    # tuner.search(ds_train, epochs=6, validation_data=ds_val)
+    # tuner.results_summary()
+    #
+    #
+    # best_model: keras.models.Sequential = tuner.get_best_models(num_models=2)[0]
+    # best_model.summary()
+    # best_model.save("tuned_model.hdf5")
+    #
+    # return None
+
 
     savecb = keras.callbacks.ModelCheckpoint(
         "saved-model-epoch{epoch:03d}-{val_accuracy:.2f}.hdf5",
@@ -173,6 +240,7 @@ def entry():
     print(ds_train)
 
     history = model.fit(ds_train, epochs=40, validation_data=ds_val, callbacks=savecb)
+    model.save("thicc_bitch.hdf5")
     print(history.history)
     print("loss, accuracy: " + str(model.evaluate(ds_test)))
 
